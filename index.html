@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>8x8x8 3D Chess</title>
+    <link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+    <main class="app-shell">
+        <section class="play-area">
+            <header class="top-bar">
+                <div>
+                    <h1>8x8x8 3D Chess</h1>
+                    <p>Local and online cubic chess with full 3D movement.</p>
+                </div>
+                <div class="turn-pill" id="playerTurn">White to move</div>
+            </header>
+
+            <div class="game-info-bar">
+                <div class="timer-section">
+                    <div class="player-timer active" id="whiteTimerBox">
+                        <span class="timer-label">White</span>
+                        <span class="timer-value" id="whiteTimer">5:00</span>
+                    </div>
+                    <div class="player-timer" id="blackTimerBox">
+                        <span class="timer-label">Black</span>
+                        <span class="timer-value" id="blackTimer">5:00</span>
+                    </div>
+                </div>
+                <div class="boundary-display" id="boundaryMode">Forbidden</div>
+            </div>
+
+            <div class="captured-pieces-container">
+                <div class="captured-side">
+                    <div class="captured-label">Captured by White</div>
+                    <div class="captured-icons" id="whiteCaptured"><span class="muted">none</span></div>
+                </div>
+                <div class="captured-side">
+                    <div class="captured-label">Captured by Black</div>
+                    <div class="captured-icons" id="blackCaptured"><span class="muted">none</span></div>
+                </div>
+            </div>
+
+            <div class="board-frame">
+                <canvas id="gameCanvas" aria-label="3D chess board"></canvas>
+            </div>
+
+            <section class="move-picker" aria-label="Move picker">
+                <div class="move-picker-head">
+                    <span>Movable Pieces</span>
+                    <span class="move-picker-summary" id="movePickerSummary">White pieces with legal moves</span>
+                </div>
+                <div class="piece-strip" id="movablePiecesList"></div>
+
+                <div class="move-picker-head move-options-head">
+                    <span>Available Moves</span>
+                    <span class="move-picker-summary" id="moveOptionsSummary">Select a piece</span>
+                </div>
+                <div class="move-options" id="moveOptionsList">
+                    <span class="empty-row">Select a movable piece to list destinations.</span>
+                </div>
+            </section>
+        </section>
+
+        <aside class="sidebar">
+            <h2>Game Controls</h2>
+
+            <div class="status-card">
+                <div class="status-line" id="gameStatus">Select a white piece to begin.</div>
+                <div class="status-line muted" id="onlineColorStatus">Local pass and play</div>
+            </div>
+
+            <div class="control-group">
+                <label for="gameModeSelect">Game Mode</label>
+                <select id="gameModeSelect">
+                    <option value="local">Local Pass and Play</option>
+                    <option value="online">Online Multiplayer</option>
+                </select>
+            </div>
+
+            <div class="online-controls" id="onlineControls">
+                <div class="connection-status disconnected" id="connectionStatus">Disconnected</div>
+                <button class="online-btn create" id="createRoomBtn">Create Room</button>
+                <div class="divider-text">OR</div>
+                <input type="text" id="roomIdInput" autocomplete="off" placeholder="Room ID or shared link">
+                <button class="online-btn join" id="joinRoomBtn">Join Room</button>
+
+                <div class="room-info" id="roomInfo" hidden>
+                    <strong>Room ID</strong>
+                    <div class="room-id-display" id="roomIdDisplay"></div>
+                    <div class="share-link-box">
+                        <input type="text" class="share-link-input" id="shareLinkInput" readonly>
+                        <button class="copy-btn" id="copyLinkBtn">Copy</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label for="boundarySelect">Boundary Condition</label>
+                <select id="boundarySelect">
+                    <option value="forbidden">Forbidden</option>
+                    <option value="reflection">Reflection</option>
+                    <option value="periodic">Periodic</option>
+                </select>
+            </div>
+            <div class="boundary-info" id="boundaryInfo">
+                Forbidden: pieces cannot move outside the 8x8x8 cube.
+            </div>
+
+            <div class="control-group">
+                <label for="timerSelect">Timer per Player</label>
+                <select id="timerSelect">
+                    <option value="0">No Timer</option>
+                    <option value="300" selected>5 Minutes</option>
+                    <option value="600">10 Minutes</option>
+                    <option value="900">15 Minutes</option>
+                    <option value="1800">30 Minutes</option>
+                    <option value="3600">1 Hour</option>
+                    <option value="7200">2 Hours</option>
+                    <option value="10800">3 Hours</option>
+                    <option value="86400">24 Hours</option>
+                </select>
+            </div>
+
+            <div class="control-grid">
+                <button id="cameraReset">Reset Camera</button>
+                <button id="newGameBtn">New Game</button>
+                <button id="offerDrawBtn" class="warning">Offer Draw</button>
+                <button id="surrenderBtn" class="danger">Surrender</button>
+            </div>
+
+            <section class="panel">
+                <h3>Move History</h3>
+                <div id="moveHistoryList" class="move-history">
+                    <div class="move-history-item muted">Game started.</div>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h3>3D Movement</h3>
+                <div class="rules-text">
+                    Rook: axes. Bishop: plane and body diagonals. Queen: all straight 3D lines.
+                    Knight: 2-1 jumps on any plane. King: one cell in any direction.
+                    Pawn: forward on X, Y, or Z, captures forward diagonals, and promotes only on the opponent's Y or Z home face inside the bottom three rows.
+                </div>
+            </section>
+        </aside>
+    </main>
+
+    <div class="hints-toggle">
+        <label for="hintsToggleSwitch">Move Hints</label>
+        <button type="button" class="toggle-switch active" id="hintsToggleSwitch" aria-pressed="true">
+            <span class="toggle-slider"></span>
+        </button>
+    </div>
+
+    <div id="promotionModal" class="promotion-modal" aria-hidden="true">
+        <div class="promotion-dialog">
+            <h3>Promote Pawn To</h3>
+            <div class="promotion-options">
+                <button class="promotion-btn" data-piece="Q">Q</button>
+                <button class="promotion-btn" data-piece="R">R</button>
+                <button class="promotion-btn" data-piece="B">B</button>
+                <button class="promotion-btn" data-piece="N">N</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./js/main.js"></script>
+</body>
+</html>
