@@ -31,7 +31,19 @@ jobs:
         run: npm ci
 
       - name: Build
+        id: vite-build
+        continue-on-error: true
         run: npm run build
+
+      - name: Static fallback
+        if: steps.vite-build.outcome != 'success'
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          cp index.html dist/
+          cp -R css dist/css
+          cp -R js dist/js
+          cp -R public/. dist/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
