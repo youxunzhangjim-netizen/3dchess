@@ -43,7 +43,7 @@ jobs:
           cp index.html dist/
           cp -R css dist/css
           cp -R js dist/js
-          cp -R public/. dist/
+          touch dist/.nojekyll
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
