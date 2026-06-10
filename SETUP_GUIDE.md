@@ -14,18 +14,12 @@ The app should be opened from the dev server, not by double-clicking an HTML fil
 1. Create a GitHub repository for this project.
 2. Push the whole `C:\Users\User\3dchess` folder contents to the repository.
 3. In GitHub, open `Settings > Pages`.
-4. Set `Build and deployment` to `GitHub Actions`.
-5. Push to `main`.
-6. Wait for the `Deploy GitHub Pages` workflow to finish.
+4. Set `Build and deployment` to `Deploy from a branch`.
+5. Set `Branch` to `main` and folder to `/ (root)`.
+6. Click `Save`.
+7. Wait for GitHub Pages to publish the site.
 
-The workflow runs:
-
-```bash
-npm ci
-npm run build
-```
-
-Then it uploads `dist` to GitHub Pages.
+Do not choose the suggested `GitHub Pages Jekyll` or `Static HTML` workflow cards. This project can run directly from the repository root on GitHub Pages.
 
 ## Online Room Test
 
