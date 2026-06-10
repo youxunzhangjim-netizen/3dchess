@@ -1,17 +1,10 @@
 import { ThreeJSRenderer } from './ThreeJSRenderer.js';
 import { NetworkManager } from './NetworkManager.js';
+import { applyLanguage, hasTranslation, setLanguage, t } from './i18n.js';
 
 const SIZE = 8;
 const MAIN_ROW = ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'];
 const PROMOTION_TYPES = ['Q', 'R', 'B', 'N'];
-const PIECE_NAMES = {
-    K: 'King',
-    Q: 'Queen',
-    R: 'Rook',
-    B: 'Bishop',
-    N: 'Knight',
-    P: 'Pawn'
-};
 const PIECE_ICONS = {
     white: { K: 'K', Q: 'Q', R: 'R', B: 'B', N: 'N', P: 'P' },
     black: { K: 'k', Q: 'q', R: 'r', B: 'b', N: 'n', P: 'p' }
@@ -36,7 +29,10 @@ export class ChessGame {
         this.gameMode = 'local';
         this.myColor = null;
         this.promotionResolver = null;
+        this.promotionColor = null;
         this.pendingMoveTarget = null;
+        this.statusKey = 'status.start';
+        this.statusParams = {};
 
         this.renderer = new ThreeJSRenderer(this);
         this.network = new NetworkManager(this);
@@ -45,10 +41,12 @@ export class ChessGame {
     }
 
     init() {
+        applyLanguage();
         this.renderer.init3D();
         this.setupBoard3D();
         this.attachEventListeners();
         this.updateBoundaryInfo();
+        this.network.refreshStatus();
         this.updateTimerDisplay();
         this.updateUI();
         this.animate();
@@ -59,8 +57,8 @@ export class ChessGame {
             document.getElementById('gameModeSelect').value = 'online';
             document.getElementById('onlineControls').classList.add('active');
             document.getElementById('roomIdInput').value = sharedRoom;
-            this.network.setStatus('connecting', 'Joining shared room...');
-            this.setStatus('Joining shared online room...');
+            this.network.setStatus('connecting', 'online.joiningShared');
+            this.setStatus('online.joiningSharedGame');
             window.setTimeout(() => this.network.joinRoom(sharedRoom), 150);
             this.updateUI();
         }
@@ -111,11 +109,11 @@ export class ChessGame {
 
         if (this.gameMode === 'online') {
             if (!this.network.isConnected) {
-                this.setStatus('Connect to an opponent before moving online.');
+                this.setStatus('status.connectBeforeMove');
                 return;
             }
             if (this.myColor !== this.currentPlayer) {
-                this.setStatus(`Waiting for ${this.currentPlayer} to move.`);
+                this.setStatus('status.waitingForMove', { color: this.currentPlayer });
                 return;
             }
         }
@@ -142,17 +140,17 @@ export class ChessGame {
             }
 
             this.clearSelection();
-            this.setStatus('Selection cleared.');
+            this.setStatus('status.selectionCleared');
             return;
         }
 
         if (!piece) {
-            this.setStatus('Choose one of your pieces first.');
+            this.setStatus('status.choosePieceFirst');
             return;
         }
 
         if (piece.color !== this.currentPlayer) {
-            this.setStatus(`It is ${this.currentPlayer}'s turn.`);
+            this.setStatus('status.turnOnly', { color: this.currentPlayer });
             return;
         }
 
@@ -172,7 +170,12 @@ export class ChessGame {
         this.renderer.showLegalMoves(this.legalMoves);
 
         const moveCount = this.legalMoves.length;
-        this.setStatus(`${this.capitalize(piece.color)} ${this.pieceName(piece)} selected at ${this.formatCoord({ x, y, z })}. ${moveCount} legal move${moveCount === 1 ? '' : 's'}.`);
+        this.setStatus('status.pieceSelected', {
+            color: piece.color,
+            type: piece.type,
+            coord: this.formatCoord({ x, y, z }),
+            count: moveCount
+        });
         this.renderMovePicker();
     }
 
@@ -189,7 +192,7 @@ export class ChessGame {
         this.renderer.clearChosenMove();
         this.renderer.showChosenMove(move.x, move.y, move.z);
         this.renderMovePicker();
-        this.setStatus(`${this.formatCoord(move)} selected. Click the same yellow destination again to move.`);
+        this.setStatus('status.targetSelected', { coord: this.formatCoord(move) });
     }
 
     async applyMove(move, options = {}) {
@@ -708,17 +711,17 @@ export class ChessGame {
         const hasMoves = this.hasLegalMoves(this.currentPlayer);
 
         if (!hasMoves && inCheck) {
-            this.endGame(`${this.capitalize(this.opponentOf(this.currentPlayer))} wins by checkmate.`);
+            this.endGame('status.checkmateWin', { color: this.opponentOf(this.currentPlayer) });
             return;
         }
 
         if (!hasMoves) {
-            this.endGame('Stalemate. Game drawn.');
+            this.endGame('status.stalemate');
             return;
         }
 
         if (inCheck) {
-            this.setStatus(`${this.capitalize(this.currentPlayer)} is in check.`);
+            this.setStatus('status.inCheck', { color: this.currentPlayer });
         }
     }
 
@@ -728,23 +731,34 @@ export class ChessGame {
             const buttons = Array.from(document.querySelectorAll('.promotion-btn'));
 
             this.promotionResolver = resolve;
+            this.promotionColor = color;
             modal.classList.add('active');
             modal.setAttribute('aria-hidden', 'false');
+            this.renderPromotionButtons(color);
 
             for (const button of buttons) {
                 const type = button.dataset.piece;
-                button.innerHTML = `
-                    <span class="promotion-icon">${this.pieceIcon({ color, type })}</span>
-                    <span class="promotion-name">${PIECE_NAMES[type]}</span>
-                `;
                 button.onclick = () => {
                     modal.classList.remove('active');
                     modal.setAttribute('aria-hidden', 'true');
                     this.promotionResolver = null;
+                    this.promotionColor = null;
                     resolve(type);
                 };
             }
         });
+    }
+
+    renderPromotionButtons(color = this.promotionColor) {
+        if (!color) return;
+
+        for (const button of document.querySelectorAll('.promotion-btn')) {
+            const type = button.dataset.piece;
+            button.innerHTML = `
+                <span class="promotion-icon">${this.pieceIcon({ color, type })}</span>
+                <span class="promotion-name">${this.pieceName({ type })}</span>
+            `;
+        }
     }
 
     isPromotionSquare(color, x, y, z) {
@@ -764,7 +778,7 @@ export class ChessGame {
 
             this.timeRemaining[this.currentPlayer] = Math.max(0, this.timeRemaining[this.currentPlayer] - 1);
             if (this.timeRemaining[this.currentPlayer] <= 0) {
-                this.endGame(`${this.capitalize(this.opponentOf(this.currentPlayer))} wins on time.`);
+                this.endGame('status.timeWin', { color: this.opponentOf(this.currentPlayer) });
             }
             this.updateTimerDisplay();
         }, 1000);
@@ -795,23 +809,26 @@ export class ChessGame {
         const blackCaptured = document.getElementById('blackCaptured');
         const onlineColorStatus = document.getElementById('onlineColorStatus');
 
-        if (turn) turn.textContent = this.gameOver ? 'Game over' : `${this.capitalize(this.currentPlayer)} to move`;
+        if (turn) turn.textContent = this.gameOver
+            ? this.tr('turn.gameOver')
+            : this.tr('turn.toMove', { color: this.currentPlayer });
         if (whiteBox) whiteBox.classList.toggle('active', this.currentPlayer === 'white' && !this.gameOver);
         if (blackBox) blackBox.classList.toggle('active', this.currentPlayer === 'black' && !this.gameOver);
-        if (boundaryMode) boundaryMode.textContent = this.capitalize(this.boundaryCondition);
-        if (whiteCaptured) whiteCaptured.innerHTML = this.capturedPieces.white.join(' ') || '<span class="muted">none</span>';
-        if (blackCaptured) blackCaptured.innerHTML = this.capturedPieces.black.join(' ') || '<span class="muted">none</span>';
+        if (boundaryMode) boundaryMode.textContent = this.tr(`boundary.names.${this.boundaryCondition}`);
+        if (whiteCaptured) whiteCaptured.innerHTML = this.capturedPieces.white.join(' ') || this.emptyInline('captured.none');
+        if (blackCaptured) blackCaptured.innerHTML = this.capturedPieces.black.join(' ') || this.emptyInline('captured.none');
 
         if (onlineColorStatus) {
             if (this.gameMode === 'local') {
-                onlineColorStatus.textContent = 'Local pass and play';
+                onlineColorStatus.textContent = this.tr('online.localStatus');
             } else if (this.network.isConnected) {
-                onlineColorStatus.textContent = `You are ${this.capitalize(this.myColor)}.`;
+                onlineColorStatus.textContent = this.tr('online.youAre', { color: this.myColor });
             } else {
-                onlineColorStatus.textContent = 'Online mode selected.';
+                onlineColorStatus.textContent = this.tr('online.selectedStatus');
             }
         }
 
+        this.renderStatus();
         this.renderHistory();
         this.renderMovePicker();
         this.updateTimerDisplay();
@@ -830,18 +847,18 @@ export class ChessGame {
 
         if (!canMove) {
             const text = this.gameOver
-                ? 'Game over'
+                ? this.tr('picker.gameOver')
                 : this.gameMode === 'online' && !this.network.isConnected
-                    ? 'Connect online to move'
-                    : `Waiting for ${this.currentPlayer}`;
+                    ? this.tr('picker.connectOnline')
+                    : this.tr('picker.waitingForColor', { color: this.currentPlayer });
             pickerSummary.textContent = text;
             piecesEl.innerHTML = `<span class="empty-row">${text}.</span>`;
-            movesSummary.textContent = 'No active selection';
-            movesEl.innerHTML = '<span class="empty-row">Destinations appear on your turn.</span>';
+            movesSummary.textContent = this.tr('picker.noActiveSelection');
+            movesEl.innerHTML = this.emptyInline('picker.destinationsOnTurn');
             return;
         }
 
-        pickerSummary.textContent = `${this.capitalize(color)} has ${movablePieces.length} movable piece${movablePieces.length === 1 ? '' : 's'}`;
+        pickerSummary.textContent = this.tr('picker.movableSummary', { color, count: movablePieces.length });
         piecesEl.innerHTML = movablePieces.length
             ? movablePieces.map(({ x, y, z, piece, moves }) => {
                 const active = this.selectedSquare && this.selectedSquare.x === x && this.selectedSquare.y === y && this.selectedSquare.z === z;
@@ -853,26 +870,30 @@ export class ChessGame {
                     </button>
                 `;
             }).join('')
-            : '<span class="empty-row">No movable pieces.</span>';
+            : this.emptyInline('picker.noMovable');
 
         if (!this.selectedSquare) {
-            movesSummary.textContent = 'Select a piece';
-            movesEl.innerHTML = '<span class="empty-row">Select a movable piece to list destinations.</span>';
+            movesSummary.textContent = this.tr('picker.selectPiece');
+            movesEl.innerHTML = this.emptyInline('picker.selectPieceDestinations');
             return;
         }
 
         const piece = this.getPiece(this.selectedSquare.x, this.selectedSquare.y, this.selectedSquare.z);
-        movesSummary.textContent = `${this.pieceName(piece)} ${this.formatCoord(this.selectedSquare)} -> ${this.legalMoves.length} destination${this.legalMoves.length === 1 ? '' : 's'}`;
+        movesSummary.textContent = this.tr('picker.selectedSummary', {
+            type: piece.type,
+            coord: this.formatCoord(this.selectedSquare),
+            count: this.legalMoves.length
+        });
         movesEl.innerHTML = this.legalMoves.length
             ? this.legalMoves.map((move) => {
                 const pending = this.pendingMoveTarget && this.sameCoord(this.pendingMoveTarget, move);
                 return `
                     <button class="move-option${move.capture ? ' capture' : ''}${move.castling ? ' castle' : ''}${pending ? ' pending' : ''}" type="button" data-move-x="${move.x}" data-move-y="${move.y}" data-move-z="${move.z}" aria-pressed="${pending}">
-                        ${this.formatCoord(move)}${move.capture ? ' x' : ''}${move.castling ? ` castle ${move.castling.side === 'kingside' ? 'K' : 'Q'}` : ''}
+                        ${this.formatMoveOption(move)}
                     </button>
                 `;
             }).join('')
-            : '<span class="empty-row">This piece has no legal destinations.</span>';
+            : this.emptyInline('picker.noDestinations');
     }
 
     getMovablePieces(color) {
@@ -912,12 +933,12 @@ export class ChessGame {
         if (!history) return;
 
         if (this.moveHistory.length === 0) {
-            history.innerHTML = '<div class="move-history-item muted">Game started.</div>';
+            history.innerHTML = `<div class="move-history-item muted">${this.tr('history.started')}</div>`;
             return;
         }
 
         history.innerHTML = this.moveHistory
-            .map((entry, index) => `<div class="move-history-item">${index + 1}. ${entry}</div>`)
+            .map((entry, index) => `<div class="move-history-item">${index + 1}. ${this.formatHistoryEntry(entry)}</div>`)
             .join('');
         history.scrollTop = history.scrollHeight;
     }
@@ -926,24 +947,25 @@ export class ChessGame {
         const info = document.getElementById('boundaryInfo');
         if (!info) return;
 
-        const text = {
-            forbidden: 'Forbidden: pieces cannot move outside the 8x8x8 cube.',
-            reflection: 'Reflection: a move that reaches an edge bounces back into the cube.',
-            periodic: 'Periodic: leaving one side wraps the move to the opposite side.'
-        };
-        info.textContent = text[this.boundaryCondition];
+        info.textContent = this.tr(`boundary.info.${this.boundaryCondition}`);
     }
 
-    setStatus(text) {
+    setStatus(key, params = {}) {
+        this.statusKey = key;
+        this.statusParams = { ...params };
+        this.renderStatus();
+    }
+
+    renderStatus() {
         const status = document.getElementById('gameStatus');
-        if (status) status.textContent = text;
+        if (status) status.textContent = this.resolveText(this.statusKey, this.statusParams);
     }
 
-    endGame(text) {
+    endGame(key, params = {}) {
         this.gameOver = true;
         this.clearSelection();
         if (this.timerInterval) clearInterval(this.timerInterval);
-        this.setStatus(text);
+        this.setStatus(key, params);
         this.updateUI();
     }
 
@@ -978,18 +1000,30 @@ export class ChessGame {
 
         this.renderer.clearHighlights();
         this.unlockGameSettings();
-        this.setStatus('New game started. Select a white piece.');
+        this.setStatus('status.newGame');
         this.updateUI();
     }
 
     createMoveNotation(piece, from, to, captured, promotion, movedType = piece.type, castling = null) {
         if (castling) {
-            return `${this.capitalize(piece.color)} King castles ${castling.side} ${this.formatCoord(from)} -> ${this.formatCoord(to)}`;
+            return {
+                kind: 'castle',
+                color: piece.color,
+                side: castling.side,
+                from: this.formatCoord(from),
+                to: this.formatCoord(to)
+            };
         }
 
-        const captureText = captured ? ` captures ${this.pieceName(captured)}` : '';
-        const promotionText = promotion ? ` promotes to ${PIECE_NAMES[promotion]}` : '';
-        return `${this.capitalize(piece.color)} ${PIECE_NAMES[movedType]} ${this.formatCoord(from)} -> ${this.formatCoord(to)}${captureText}${promotionText}`;
+        return {
+            kind: 'move',
+            color: piece.color,
+            type: movedType,
+            from: this.formatCoord(from),
+            to: this.formatCoord(to),
+            capturedType: captured?.type || '',
+            promotionType: promotion || ''
+        };
     }
 
     attachEventListeners() {
@@ -1023,7 +1057,7 @@ export class ChessGame {
         document.getElementById('gameModeSelect').addEventListener('change', (event) => {
             if (this.gameStarted || this.network.isConnected) {
                 event.target.value = this.gameMode;
-                alert('Game mode cannot change after the game starts or after online connection.');
+                alert(this.tr('alerts.modeLocked'));
                 return;
             }
 
@@ -1032,7 +1066,7 @@ export class ChessGame {
             if (this.gameMode === 'local') {
                 this.myColor = null;
                 this.network.close();
-                this.network.setStatus('disconnected', 'Disconnected');
+                this.network.setStatus('disconnected', 'online.disconnected');
             }
             this.updateUI();
         });
@@ -1060,13 +1094,13 @@ export class ChessGame {
                 input.select();
                 document.execCommand('copy');
             }
-            this.setStatus('Room link copied.');
+            this.setStatus('status.roomLinkCopied');
         });
 
         document.getElementById('boundarySelect').addEventListener('change', (event) => {
             if (this.gameStarted || this.network.isConnected) {
                 event.target.value = this.boundaryCondition;
-                alert('Boundary cannot change after the game starts or after online connection.');
+                alert(this.tr('alerts.boundaryLocked'));
                 return;
             }
             this.boundaryCondition = event.target.value;
@@ -1077,7 +1111,7 @@ export class ChessGame {
         document.getElementById('timerSelect').addEventListener('change', (event) => {
             if (this.gameStarted || this.network.isConnected) {
                 event.target.value = String(this.timeLimit);
-                alert('Timer cannot change after the game starts or after online connection.');
+                alert(this.tr('alerts.timerLocked'));
                 return;
             }
             const value = Number(event.target.value);
@@ -1097,18 +1131,18 @@ export class ChessGame {
             if (this.gameMode === 'online' && this.network.isConnected) {
                 this.network.sendMessage({ type: 'surrender' });
             }
-            this.endGame(`${this.capitalize(this.opponentOf(this.currentPlayer))} wins by resignation.`);
+            this.endGame('status.resignationWin', { color: this.opponentOf(this.currentPlayer) });
         });
 
         document.getElementById('offerDrawBtn').addEventListener('click', () => {
             if (this.gameOver) return;
             if (this.gameMode === 'online' && this.network.isConnected) {
                 this.network.sendMessage({ type: 'drawOffer' });
-                this.setStatus('Draw offer sent.');
+                this.setStatus('status.drawOfferSent');
                 return;
             }
-            if (confirm('Agree to a draw?')) {
-                this.endGame('Game drawn by agreement.');
+            if (confirm(this.tr('alerts.drawPrompt'))) {
+                this.endGame('status.drawAgreed');
             }
         });
 
@@ -1120,7 +1154,7 @@ export class ChessGame {
 
             if (!this.showMoveHints) {
                 this.renderer.clearLegalMoveHints();
-                this.setStatus('Move hints hidden.');
+                this.setStatus('status.hintsHidden');
                 return;
             }
 
@@ -1130,7 +1164,18 @@ export class ChessGame {
                     this.renderer.showChosenMove(this.pendingMoveTarget.x, this.pendingMoveTarget.y, this.pendingMoveTarget.z);
                 }
             }
-            this.setStatus('Move hints shown.');
+            this.setStatus('status.hintsShown');
+        });
+
+        document.querySelectorAll('[data-lang-option]').forEach((button) => {
+            button.addEventListener('click', () => setLanguage(button.dataset.langOption));
+        });
+
+        window.addEventListener('languagechange', () => {
+            this.updateBoundaryInfo();
+            this.renderPromotionButtons();
+            this.network.refreshStatus();
+            this.updateUI();
         });
     }
 
@@ -1170,6 +1215,35 @@ export class ChessGame {
         });
     }
 
+    tr(key, params = {}) {
+        return t(key, params);
+    }
+
+    resolveText(key, params = {}) {
+        return hasTranslation(key) ? this.tr(key, params) : key;
+    }
+
+    emptyInline(key) {
+        return `<span class="empty-row">${this.tr(key)}</span>`;
+    }
+
+    formatMoveOption(move) {
+        const capture = move.capture ? ' x' : '';
+        const castling = move.castling ? ` ${this.tr('picker.castleMove', { side: move.castling.side })}` : '';
+        return `${this.formatCoord(move)}${capture}${castling}`;
+    }
+
+    formatHistoryEntry(entry) {
+        if (typeof entry === 'string') return entry;
+        if (!entry || typeof entry !== 'object') return '';
+
+        if (entry.kind === 'castle') {
+            return this.tr('history.castle', entry);
+        }
+
+        return this.tr('history.move', entry);
+    }
+
     formatCoord({ x, y, z }) {
         return `(${x},${y},${z})`;
     }
@@ -1183,7 +1257,7 @@ export class ChessGame {
     }
 
     pieceName(piece) {
-        return PIECE_NAMES[piece.type] || 'Piece';
+        return this.tr(`pieces.${piece?.type || 'piece'}`);
     }
 
     pieceIcon(piece) {

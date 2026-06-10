@@ -29,6 +29,52 @@ body {
     overflow-x: hidden;
 }
 
+.language-switch {
+    position: fixed;
+    top: 10px;
+    right: 12px;
+    z-index: 90;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 7px;
+    border: 1px solid rgba(56, 189, 248, 0.42);
+    border-radius: 7px;
+    background: rgba(17, 19, 24, 0.9);
+    color: var(--muted);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.26);
+}
+
+.lang-option {
+    width: auto;
+    min-height: 22px;
+    padding: 0 3px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 850;
+    line-height: 1;
+}
+
+.lang-option:hover {
+    background: transparent;
+    color: var(--text);
+}
+
+.lang-option.active {
+    color: var(--cyan);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+}
+
+.lang-divider {
+    color: rgba(156, 168, 186, 0.7);
+    font-size: 12px;
+    line-height: 1;
+}
+
 button,
 select,
 input {
@@ -47,7 +93,7 @@ select {
     width: min(1500px, 100%);
     min-height: 100vh;
     margin: 0 auto;
-    padding: 20px;
+    padding: 46px 20px 20px;
 }
 
 .play-area,
@@ -674,7 +720,7 @@ input:disabled {
 
 @media (max-width: 640px) {
     .app-shell {
-        padding: 12px;
+        padding: 46px 12px 12px;
     }
 
     .top-bar,

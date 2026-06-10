@@ -1,3 +1,5 @@
+import { hasTranslation, t } from './i18n.js';
+
 const CONNECTION_TIMEOUT_MS = 20000;
 const PEER_OPTIONS = {
     debug: 1,
@@ -19,6 +21,9 @@ export class NetworkManager {
         this.isHost = false;
         this.roomId = '';
         this.connectionTimer = null;
+        this.statusKind = 'disconnected';
+        this.statusKey = 'online.disconnected';
+        this.statusParams = {};
     }
 
     createRoom() {
@@ -29,8 +34,8 @@ export class NetworkManager {
         this.myColor = 'white';
         this.game.myColor = 'white';
         this.game.gameMode = 'online';
-        this.setStatus('connecting', 'Creating online room...');
-        this.game.setStatus('Creating online room...');
+        this.setStatus('connecting', 'online.connectingRoom');
+        this.game.setStatus('online.connectingRoom');
 
         let peer;
         try {
@@ -45,8 +50,8 @@ export class NetworkManager {
             if (this.peer !== peer) return;
             this.roomId = id;
             this.setRoomInfo(id, this.buildShareUrl(id));
-            this.setStatus('connecting', 'Room ready. Share the link with Black.');
-            this.game.setStatus('Room ready. You are White. Waiting for Black to join.');
+            this.setStatus('connecting', 'online.roomReadyConnection');
+            this.game.setStatus('online.roomReadyGame');
             this.game.updateUI();
         });
 
@@ -57,7 +62,7 @@ export class NetworkManager {
 
         peer.on('disconnected', () => {
             if (this.peer !== peer || peer.destroyed) return;
-            this.setStatus('connecting', 'Reconnecting signaling...');
+            this.setStatus('connecting', 'online.reconnecting');
             peer.reconnect();
         });
 
@@ -70,7 +75,7 @@ export class NetworkManager {
     joinRoom(rawRoomId) {
         const roomId = this.extractRoomId(rawRoomId);
         if (!roomId) {
-            alert('Enter a room ID or shared room link.');
+            alert(t('online.enterRoom'));
             return;
         }
 
@@ -81,8 +86,8 @@ export class NetworkManager {
         this.game.myColor = 'black';
         this.game.gameMode = 'online';
         this.setRoomInfo(roomId, this.buildShareUrl(roomId));
-        this.setStatus('connecting', 'Joining room...');
-        this.game.setStatus('Joining online room as Black...');
+        this.setStatus('connecting', 'online.joiningRoom');
+        this.game.setStatus('online.joiningAsBlack');
 
         let peer;
         try {
@@ -100,12 +105,12 @@ export class NetworkManager {
                 metadata: { game: '3dchess' }
             });
             this.setupConnection(this.connection);
-            this.startConnectionTimer('Could not reach that room. Check that White still has the room open.');
+            this.startConnectionTimer('online.timeoutJoin');
         });
 
         peer.on('disconnected', () => {
             if (this.peer !== peer || peer.destroyed) return;
-            this.setStatus('connecting', 'Reconnecting signaling...');
+            this.setStatus('connecting', 'online.reconnecting');
             peer.reconnect();
         });
 
@@ -126,7 +131,7 @@ export class NetworkManager {
 
         this.connection = conn;
         this.setupConnection(conn);
-        this.startConnectionTimer('Opponent opened the room but did not finish connecting.');
+        this.startConnectionTimer('online.timeoutAccept');
     }
 
     setupConnection(conn) {
@@ -141,8 +146,8 @@ export class NetworkManager {
             this.game.myColor = this.myColor;
             this.game.lockGameSettings();
             this.setRoomInfo(this.roomId, this.buildShareUrl(this.roomId));
-            this.setStatus('connected', this.isHost ? 'Connected as White' : 'Connected as Black');
-            this.game.setStatus(this.isHost ? 'Black joined. White to move.' : 'Connected. You are Black.');
+            this.setStatus('connected', this.isHost ? 'online.connectedWhite' : 'online.connectedBlack');
+            this.game.setStatus(this.isHost ? 'online.blackJoined' : 'online.connectedBlackGame');
             this.game.updateUI();
 
             if (this.isHost) {
@@ -161,8 +166,8 @@ export class NetworkManager {
             this.connection = null;
             this.isConnected = false;
             this.clearConnectionTimer();
-            this.setStatus('disconnected', 'Opponent disconnected');
-            this.game.setStatus('Opponent disconnected. Create or join a new room to continue online.');
+            this.setStatus('disconnected', 'online.opponentDisconnected');
+            this.game.setStatus('online.opponentDisconnectedGame');
             this.game.updateUI();
         });
 
@@ -211,8 +216,8 @@ export class NetworkManager {
                     this.syncClocks(data.timeRemaining);
                 }
                 if (!moved) {
-                    this.setStatus('disconnected', 'Move sync failed');
-                    this.game.setStatus('Move sync failed. Start a new online room.');
+                    this.setStatus('disconnected', 'online.moveSyncFailed');
+                    this.game.setStatus('online.moveSyncFailedGame');
                 }
                 break;
             }
@@ -223,29 +228,29 @@ export class NetworkManager {
                 break;
 
             case 'surrender':
-                this.game.endGame('Opponent surrendered. You win.');
+                this.game.endGame('online.opponentSurrendered');
                 break;
 
             case 'drawOffer':
-                if (confirm('Opponent offers a draw. Accept?')) {
+                if (confirm(t('online.drawOfferPrompt'))) {
                     this.sendMessage({ type: 'drawAccepted' });
-                    this.game.endGame('Game drawn by agreement.');
+                    this.game.endGame('status.drawAgreed');
                 } else {
                     this.sendMessage({ type: 'drawDeclined' });
                 }
                 break;
 
             case 'drawAccepted':
-                this.game.endGame('Draw accepted.');
+                this.game.endGame('status.drawAccepted');
                 break;
 
             case 'drawDeclined':
-                this.game.setStatus('Draw offer declined.');
+                this.game.setStatus('online.drawDeclined');
                 break;
 
             case 'roomFull':
-                this.setStatus('disconnected', 'Room already has two players');
-                this.game.setStatus('That room already has two players.');
+                this.setStatus('disconnected', 'online.roomFull');
+                this.game.setStatus('online.roomFullGame');
                 this.close({ silent: true });
                 this.clearRoomInfo();
                 break;
@@ -347,7 +352,9 @@ export class NetworkManager {
 
     createPeer() {
         if (!window.Peer) {
-            throw new Error('PeerJS did not load. Check your internet connection and reload the page.');
+            const err = new Error('PeerJS unavailable');
+            err.type = 'peer-missing';
+            throw err;
         }
         return new window.Peer(undefined, PEER_OPTIONS);
     }
@@ -371,16 +378,16 @@ export class NetworkManager {
 
         if (!silent) {
             this.clearRoomInfo();
-            this.setStatus('disconnected', 'Disconnected');
+            this.setStatus('disconnected', 'online.disconnected');
         }
     }
 
-    startConnectionTimer(message) {
+    startConnectionTimer(key, params = {}) {
         this.clearConnectionTimer();
         this.connectionTimer = window.setTimeout(() => {
             if (this.isConnected) return;
-            this.setStatus('disconnected', message);
-            this.game.setStatus(message);
+            this.setStatus('disconnected', key, params);
+            this.game.setStatus(key, params);
         }, CONNECTION_TIMEOUT_MS);
     }
 
@@ -411,31 +418,47 @@ export class NetworkManager {
         this.setRoomInfo('', '');
     }
 
-    setStatus(kind, text) {
+    setStatus(kind, key, params = {}) {
+        this.statusKind = kind;
+        this.statusKey = key;
+        this.statusParams = { ...params };
+        this.renderStatus();
+    }
+
+    refreshStatus() {
+        this.renderStatus();
+    }
+
+    renderStatus() {
         const el = document.getElementById('connectionStatus');
         if (!el) return;
 
         el.classList.remove('connected', 'connecting', 'disconnected');
-        el.classList.add(kind);
-        el.textContent = text;
+        el.classList.add(this.statusKind);
+        el.textContent = this.resolveText(this.statusKey, this.statusParams);
+    }
+
+    resolveText(key, params = {}) {
+        return hasTranslation(key) ? t(key, params) : key;
     }
 
     handlePeerError(err) {
         this.clearConnectionTimer();
-        const text = this.describePeerError(err);
-        this.setStatus('disconnected', text);
-        this.game.setStatus(text);
+        const error = this.describePeerError(err);
+        this.setStatus('disconnected', error.key, error.params);
+        this.game.setStatus(error.key, error.params);
         this.game.updateUI();
     }
 
     describePeerError(err) {
         const type = err?.type || '';
-        if (type === 'peer-unavailable') return 'Room not found. Ask White to create a new room link.';
-        if (type === 'network') return 'Network error. Check internet connection and try again.';
-        if (type === 'browser-incompatible') return 'This browser cannot use WebRTC online play.';
-        if (type === 'ssl-unavailable') return 'Online play needs HTTPS. Use the GitHub Pages link.';
-        if (type === 'server-error') return 'Peer server error. Try creating a new room.';
-        return `Connection error: ${type || err?.message || 'unknown error'}`;
+        if (type === 'peer-unavailable') return { key: 'online.peerUnavailable', params: {} };
+        if (type === 'network') return { key: 'online.networkError', params: {} };
+        if (type === 'browser-incompatible') return { key: 'online.browserIncompatible', params: {} };
+        if (type === 'ssl-unavailable') return { key: 'online.sslUnavailable', params: {} };
+        if (type === 'server-error') return { key: 'online.serverError', params: {} };
+        if (type === 'peer-missing') return { key: 'online.peerMissing', params: {} };
+        return { key: 'online.connectionError', params: { detail: type || err?.message || 'unknown error' } };
     }
 
     extractRoomId(value) {

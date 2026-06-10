@@ -123,7 +123,7 @@ try {
         assert(castled, 'applyMove should accept legal castling');
         assert(game.getPiece(6, 0, 0)?.type === 'K' && game.getPiece(5, 0, 0)?.type === 'R', 'castling should move king to x6 and rook to x5');
         assert(game.getPiece(6, 0, 0).hasMoved && game.getPiece(5, 0, 0).hasMoved, 'castling should mark king and rook as moved');
-        assert(game.moveHistory[0]?.includes('castles kingside'), 'castling history should use English castle text');
+        assert(game.formatHistoryEntry(game.moveHistory[0]).includes('castles kingside'), 'castling history should display English castle text by default');
 
         clearBoard();
         place(4, 0, 0, 'white', 'K');
@@ -312,7 +312,7 @@ try {
         const moved = await game.applyMove({ from: { x: 3, y: 3, z: 3 }, to: { x: 4, y: 3, z: 3 } });
         assert(moved, 'applyMove should accept legal pawn move');
         assert(game.currentPlayer === 'black', 'legal move should switch turns');
-        assert(game.moveHistory.length === 1 && game.moveHistory[0].includes('White Pawn'), 'move history should use English piece names');
+        assert(game.moveHistory.length === 1 && game.formatHistoryEntry(game.moveHistory[0]).includes('White Pawn'), 'move history should display English piece names by default');
 
         return { ok: failures.length === 0, failures };
     });

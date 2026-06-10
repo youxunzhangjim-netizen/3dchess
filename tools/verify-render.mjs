@@ -76,6 +76,31 @@ try {
         await page.waitForFunction(() => window.game?.renderer?.renderer);
         await page.waitForTimeout(500);
 
+        const languageCheck = await page.evaluate(() => {
+            document.querySelector('[data-lang-option="zh"]').click();
+            const zhTitle = document.querySelector('h1')?.textContent || '';
+            const zhControls = document.querySelector('.sidebar h2')?.textContent || '';
+            const zhTurn = document.getElementById('playerTurn')?.textContent || '';
+            const pieceSign = document.querySelector('#movablePiecesList .piece-icon')?.textContent?.trim() || '';
+
+            document.querySelector('[data-lang-option="en"]').click();
+            const enTitle = document.querySelector('h1')?.textContent || '';
+            const enControls = document.querySelector('.sidebar h2')?.textContent || '';
+
+            return { zhTitle, zhControls, zhTurn, pieceSign, enTitle, enControls };
+        });
+
+        if (
+            !languageCheck.zhTitle.includes('西洋棋')
+            || languageCheck.zhControls !== '遊戲控制'
+            || !languageCheck.zhTurn.includes('白方')
+            || !/^[KQRBNPkqrbnp]$/.test(languageCheck.pieceSign)
+            || languageCheck.enTitle !== '8x8x8 3D Chess'
+            || languageCheck.enControls !== 'Game Controls'
+        ) {
+            throw new Error(`${viewport.name}: language toggle failed ${JSON.stringify(languageCheck)}.`);
+        }
+
         const renderCheck = await page.evaluate(() => {
             const canvas = document.getElementById('gameCanvas');
             const gl = window.game.renderer.renderer.getContext();
@@ -199,7 +224,7 @@ try {
         }
 
         await page.screenshot({ path: path.join(outDir, `${viewport.name}.png`), fullPage: true });
-        checks.push({ viewport: viewport.name, render: summary, hints: hintCheck, picker: pickerCheck, promotion: promotionRuleCheck });
+        checks.push({ viewport: viewport.name, render: summary, language: languageCheck, hints: hintCheck, picker: pickerCheck, promotion: promotionRuleCheck });
         await page.close();
     }
 
